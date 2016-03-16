@@ -1,0 +1,167 @@
+
+
+---
+title: "geospatial example "
+author: "Ren-Huai Huang"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+ # ----Packages for Reading/Writing/Manipulating Spatial Data-----------
+library(rgdal)  #conatins the read/writeOGR for reading shapelies and read/writeRGDAL for reading raster
+library(rgeos)  # neccessary for ggplot2::fortify.sp(); serves as a replacement for gpclib
+library(maptools)  #Contains the overlay command
+# gpclibPermit() #Makes all of the function in the maptools package available to us- only
+# neccessary if rgeos is not installed
+library(spdep)  #Contains a number of useful spatial stat functions
+library(spatstat)  #Contains functions for generating random points drawn from a specific data generatin
+library(raster)  #contains a number of useful functions for raster data, especially extract()
+# ===================================================================
+# ---Packages for Data Visualization and Manipulation---
+library(ggplot2)
+library(reshape2)
+library(scales)
+```
+
+
+```{r}
+datdir <- "/Users/huangrh/MyGit/geoR/example/data/"
+mydat <- read.csv("/Users/huangrh/MyGit/geoR/example/data/kenpop89to99.csv")
+names(mydat)
+summary(mydat)
+
+# read in a shpaefile
+ds <- rgdal::readOGR(dsn = datdir, layer = "kenya")
+
+# explore the data
+is(ds)
+typeof(ds)
+summary(ds)
+str(ds, max.level = 2) # tells us the object has five 'slots'
+
+# access the shapefile data
+dsdata <- as(ds, "data.frame") # extract the data into a regular data.frame
+head(dsdata)
+
+# add a new row to dsdata
+dsdata$new <- 1:nrow(dsdata)
+ds$new <- 1:nrow(dsdata)
+head(ds@data) # access the data slot in the S4 object "ds"
+plot(ds)
+
+# 4 Read in a .csv File and Join it to the Shapefile
+
+## 4.1 read in a .csv file
+d <- read.csv(paste(datdir, "kenpop89to99.csv", sep = ""))
+summary(d)
+head(d)
+class(d)
+# extract columns from csv
+d <- d[, c("ip89DId", "PopChg", "BrateChg", "Y89Pop", "Y99Pop")]  #Grab only the colunms we want
+
+d <- unique(d)  #get rid of duplicate rows
+
+## 4.1 joing the csv file to our shapefile
+
+d2 = ds@data # extract the data
+
+d3 <- merge(d, d2)  #They have common colunm names so we don't have to specify what to join on
+head(d3)
+head(d)
+head(d2)
+d4 <- merge(ds, d)  #This will produce the same result. d4 == d3
+
+# Now lets do the Table Join: Join scv data to our Shapefile .... 
+
+ds1 <- ds # make a copy so we can demonstrate 2 ways of doing th join
+ds@data <- data.frame(as(ds, "data.frame"), d[match(ds@data[, "ip89DId"], d[, "ip89DId"]),])
+summary(ds)
+
+
+# ---Alternativley we can do this : This is the preferred method but will only work if ds
+# and d have the same number of rows, and the row names are identical and in the same
+# order
+row.names(d) <- d$ip89DId
+row.names(ds1) <- as.character(ds1$ip89DId)
+d <- d[order(d$ip89DId), ]
+ds1 <- maptools::spCbind(ds1, d)
+# head(ds@data)
+
+
+## 5 create reandom points and extract as a text file
+
+win <- sp::bbox(ds) #the bounding box around the Kenya dataset
+win
+
+
+dran <- spatstat::runifpoint(100, win = as.vector(t(bbox(ds))))  #create 100 random points
+plot(ds)
+
+plot(dran, add = T)
+
+# --------------------------CONVERT RANDOM POINTS TO DATA.FRAME------------------
+dp <- as.data.frame(dran)  #This creates a simple data frame with 2 colunms, x and y
+head(dp)
+
+# Now we will add some values that will be aggregated in the next exercise
+dp$values <- rnorm(100, 5, 10)  #generates 100 values from a Normal distribution with mean
+head(dp)
+
+
+#  6 Do a point in polygon spatial join
+# --------------------------CONVERT RANDOM POINTS TO SPATIAL POINTS DATAFRAME----
+dsp <- SpatialPointsDataFrame(coords = dp[, c("x", "y")], data = data.frame(values = dp$values))
+summary(dsp)
+
+# ---Since the Data was Generated from a source with same projection as our Kenya data,
+# we will go head and define the projection'
+dsp@proj4string <- ds@proj4string
+ ds@proj4string
+ 
+str(dsp, max.level = 2)
+
+
+# --The data frame tells us for each point the index of the polygon it falls into
+dsdat <- over(ds, dsp, fn = mean)  #do the join
+head(dsdat)  #look at the data
+inds <- row.names(dsdat)  #get the row names of dsdat so that we can put the data back into ds
+head(inds)
+
+ds@data[inds, "pntvals"] <- dsdata
+head(ds@data)
+
+# 7 Do a pixel in polygon spatial join
+
+# --------------------------READ AND CROP A RASTER------------------------------
+g <- rgdal::readGDAL(fname = "example/data/anom.2000.03.tiff")  #Read in a geoTiff of rainfall anomolies
+## data/anom.2000.03.tiff has GDAL driver GTiff
+## and has 801 rows and 751 columns
+g <- raster(g)  #convert it to a format recongnizable by the raster package
+# --plot it
+plot(g)
+plot(ds, add = T)  #plot kenay on top to get some sense of the extent
+# ------Crop the Raster Dataset to the Extent of the Kenya Shapefile
+gc <- crop(g, ds)  #clip the raster to the extent of the shapefile
+# Then test again to make sure they line up
+plot(gc)
+plot
+
+# --------------------------PIXEL IN POLY SPATIAL JOIN------------------------------
+# Unweighted- only assigns grid to district if centroid is in that district
+ds@data$precip <- extract(gc, ds, fun = mean, weights = FALSE)
+## Warning:  Transforming SpatialPolygons to the CRS of the Raster
+# Weighted (more accurate, but slower)- weights aggregation by the amount of the grid
+# cell that falls within the district boundary
+# ds@data$precip_wght<-extract(gc,ds,fun=mean,weights=TRUE)
+# --If you want to see the actual values and the weights associated with them do this:
+# rastweight<-extract(gc,ds,weights=TRUE)
+# ==========================================================
+# ------Examine the Results and Extract the Data----------- Plot The Results
+# spplot(dsp[,c('wrsi','wrsi_wght')])
+```
+
+
+[ref:](https://dl.dropboxusercontent.com/u/9577903/broomspatial.pdf)
+
+[link](http://gis.stackexchange.com/questions/45327/tutorials-to-handle-spatial-data-in-r)
