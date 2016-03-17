@@ -26,12 +26,27 @@ library(scales)
 
 
 ```{r}
-datdir <- "/Users/huangrh/MyGit/geoR/example/data/"
+
 mydat <- read.csv("/Users/huangrh/MyGit/geoR/example/data/kenpop89to99.csv")
 names(mydat)
 summary(mydat)
+```
 
+# 3 Read and Plot Spatial Data  
+The most flexible way to read in a shapefile is by using the readOGR command.   
+This is the only option that will also read in the .prj file associated with the shapefile.   
+NCEAS has a useful summary of the various ways to read in a shapefile:   http://www.nceas.ucsb.edu/scicomp/usecases/ReadWriteESRIShapeFiles  
+I recommend always using rgdal::readOGR().  
+
+Read OGR can be used for almost any vector data format.   
+To read in a shapefile, you enter two arguments:  
+
+• dsn- The directory containing the shapefile (even if this is already your working directory)   
+• layer- the name of the shapefile, without the file extension  
+
+```{r}
 # read in a shpaefile
+datdir <- "/Users/huangrh/MyGit/geoR/example/data/"
 ds <- rgdal::readOGR(dsn = datdir, layer = "kenya")
 
 # explore the data
@@ -39,31 +54,63 @@ is(ds)
 typeof(ds)
 summary(ds)
 str(ds, max.level = 2) # tells us the object has five 'slots'
-
+slot("Spatial")
 # access the shapefile data
 dsdata <- as(ds, "data.frame") # extract the data into a regular data.frame
-head(dsdata)
+head(dsdata) 
+head(ds@data)
 
 # add a new row to dsdata
 dsdata$new <- 1:nrow(dsdata)
 ds$new <- 1:nrow(dsdata)
 head(ds@data) # access the data slot in the S4 object "ds"
+
+# Plot the data
 plot(ds)
 
-# 4 Read in a .csv File and Join it to the Shapefile
+# 
+```  
+Obviously there are more options to dress up your plot and make a proper map/graphic. A common method is to use spplot() from the sp package. However I prefer to use the functions available in the ggplot2 package as I think they are more flexible and intuitive. We will address maps and graphics later in the in the class. For now, let us move onto reading in some tabular data and merging that data to our shapefile (similar to the join operation in ArcGIS).
 
-## 4.1 read in a .csv file
+
+# 4. Read in a .csv File and Join it to the Shapefile
+
+
+```{r}
+
+
+## 4.1 read in a .csv file and explore the data  
 d <- read.csv(paste(datdir, "kenpop89to99.csv", sep = ""))
+names(d)
 summary(d)
 head(d)
 class(d)
+
 # extract columns from csv
-d <- d[, c("ip89DId", "PopChg", "BrateChg", "Y89Pop", "Y99Pop")]  #Grab only the colunms we want
+# Grab only the colunms we want
+d <- d[, c("ip89DId", "PopChg", "BrateChg", "Y89Pop", "Y99Pop")] 
 
 d <- unique(d)  #get rid of duplicate rows
+```  
 
-## 4.1 joing the csv file to our shapefile
+# 4.2 Join the csv file to our Shapefile  
+In R there a variety of options available for joining data sets.   
+The most simple and intuitive is the merge() command (see ?merge for details).   
+Merge takes two data.frames and matches them based on common attributes in columns.   
+If the user does not specify the name(s) of the columns then merge will just look for common column names and perform the join on those.   
+However with spatial objects the process is a little more tricky.   
+Unfortunately merge automatically re-orders the new merged data.frame based on the common columns.   
+This will not work for a spatial object as the associated shapes (points, lines, or polygons) would have to be reordered as well.   
+There are a variety of ways around this and I will show a simple one below.  
+First I will demonstrate the basic merge() function.  
+Then I will show one method for merging tabular to spatial data.  
 
+```{r}
+## 4.2 joing the csv file to our shapefile
+
+# ---- Explore merge and do a table join -----------
+
+# ---- First a basic merge just to demonstrate -----
 d2 = ds@data # extract the data
 
 d3 <- merge(d, d2)  #They have common colunm names so we don't have to specify what to join on
@@ -72,7 +119,11 @@ head(d)
 head(d2)
 d4 <- merge(ds, d)  #This will produce the same result. d4 == d3
 
-# Now lets do the Table Join: Join scv data to our Shapefile .... 
+# ------------------------------------------------------------------
+# -----------Now lets do the Table Join: Join scv data to our Shapefile .... 
+# --We can do the join in one line by using the match() function
+
+match(c(1,3,5,10), 1:10)
 
 ds1 <- ds # make a copy so we can demonstrate 2 ways of doing th join
 ds@data <- data.frame(as(ds, "data.frame"), d[match(ds@data[, "ip89DId"], d[, "ip89DId"]),])
@@ -134,7 +185,7 @@ head(ds@data)
 # 7 Do a pixel in polygon spatial join
 
 # --------------------------READ AND CROP A RASTER------------------------------
-g <- rgdal::readGDAL(fname = "example/data/anom.2000.03.tiff")  #Read in a geoTiff of rainfall anomolies
+g <- rgdal::readGDAL(fname = "/Users/huangrh/MyGit/geoR/example/data/anom.2000.03.tiff")  #Read in a geoTiff of rainfall anomolies
 ## data/anom.2000.03.tiff has GDAL driver GTiff
 ## and has 801 rows and 751 columns
 g <- raster(g)  #convert it to a format recongnizable by the raster package
