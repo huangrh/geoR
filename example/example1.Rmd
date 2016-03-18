@@ -27,7 +27,7 @@ library(scales)
 
 ```{r}
 
-mydat <- read.csv("/Users/huangrh/MyGit/geoR/example/data/kenpop89to99.csv")
+mydat <- read.csv(file.path(getwd(),"/example/data/kenpop89to99.csv"))
 names(mydat)
 summary(mydat)
 ```
@@ -46,7 +46,7 @@ To read in a shapefile, you enter two arguments:
 
 ```{r}
 # read in a shpaefile
-datdir <- "/Users/huangrh/MyGit/geoR/example/data/"
+datdir <- file.path(getwd(), "/example/data/")
 ds <- rgdal::readOGR(dsn = datdir, layer = "kenya")
 
 # explore the data
@@ -54,7 +54,7 @@ is(ds)
 typeof(ds)
 summary(ds)
 str(ds, max.level = 2) # tells us the object has five 'slots'
-slot("Spatial")
+getClass("Spatial")
 # access the shapefile data
 dsdata <- as(ds, "data.frame") # extract the data into a regular data.frame
 head(dsdata) 
@@ -70,16 +70,22 @@ plot(ds)
 
 # 
 ```  
-Obviously there are more options to dress up your plot and make a proper map/graphic. A common method is to use spplot() from the sp package. However I prefer to use the functions available in the ggplot2 package as I think they are more flexible and intuitive. We will address maps and graphics later in the in the class. For now, let us move onto reading in some tabular data and merging that data to our shapefile (similar to the join operation in ArcGIS).
+
+Obviously there are more options to dress up your plot and make a proper map/graphic. 
+
+A common method is to use spplot() from the sp package. 
+
+However I prefer to use the functions available in the ggplot2 package as I think they are more flexible and intuitive.
+
+We will address maps and graphics later in the in the class. For now, let us move onto reading in some tabular data and merging that data to our shapefile (similar to the join operation in ArcGIS).
 
 
 # 4. Read in a .csv File and Join it to the Shapefile
 
+## 4.1 read in a .csv file and explore the data  
 
 ```{r}
 
-
-## 4.1 read in a .csv file and explore the data  
 d <- read.csv(paste(datdir, "kenpop89to99.csv", sep = ""))
 names(d)
 summary(d)
@@ -94,20 +100,23 @@ d <- unique(d)  #get rid of duplicate rows
 ```  
 
 # 4.2 Join the csv file to our Shapefile  
+
 In R there a variety of options available for joining data sets.   
+
 The most simple and intuitive is the merge() command (see ?merge for details).   
+
 Merge takes two data.frames and matches them based on common attributes in columns.   
 If the user does not specify the name(s) of the columns then merge will just look for common column names and perform the join on those.   
+
 However with spatial objects the process is a little more tricky.   
 Unfortunately merge automatically re-orders the new merged data.frame based on the common columns.   
 This will not work for a spatial object as the associated shapes (points, lines, or polygons) would have to be reordered as well.   
+
 There are a variety of ways around this and I will show a simple one below.  
 First I will demonstrate the basic merge() function.  
 Then I will show one method for merging tabular to spatial data.  
 
 ```{r}
-## 4.2 joing the csv file to our shapefile
-
 # ---- Explore merge and do a table join -----------
 
 # ---- First a basic merge just to demonstrate -----
@@ -123,7 +132,8 @@ d4 <- merge(ds, d)  #This will produce the same result. d4 == d3
 # -----------Now lets do the Table Join: Join scv data to our Shapefile .... 
 # --We can do the join in one line by using the match() function
 
-match(c(1,3,5,10), 1:10)
+ind <- match(c(1,2,5,10), 1:10*2)
+c(1,2,10, 11) %in% 1:10
 
 ds1 <- ds # make a copy so we can demonstrate 2 ways of doing th join
 ds@data <- data.frame(as(ds, "data.frame"), d[match(ds@data[, "ip89DId"], d[, "ip89DId"]),])
@@ -146,7 +156,7 @@ win <- sp::bbox(ds) #the bounding box around the Kenya dataset
 win
 
 
-dran <- spatstat::runifpoint(100, win = as.vector(t(bbox(ds))))  #create 100 random points
+dran <- spatstat::runifpoint(100, win = as.vector(t(sp::bbox(ds))))  #create 100 random points
 plot(ds)
 
 plot(dran, add = T)
@@ -162,7 +172,7 @@ head(dp)
 
 #  6 Do a point in polygon spatial join
 # --------------------------CONVERT RANDOM POINTS TO SPATIAL POINTS DATAFRAME----
-dsp <- SpatialPointsDataFrame(coords = dp[, c("x", "y")], data = data.frame(values = dp$values))
+dsp <- sp::SpatialPointsDataFrame(coords = dp[, c("x", "y")], data = data.frame(values = dp$values))
 summary(dsp)
 
 # ---Since the Data was Generated from a source with same projection as our Kenya data,
@@ -181,22 +191,25 @@ head(inds)
 
 ds@data[inds, "pntvals"] <- dsdata
 head(ds@data)
+```
 
 # 7 Do a pixel in polygon spatial join
 
+
+```{r}
 # --------------------------READ AND CROP A RASTER------------------------------
-g <- rgdal::readGDAL(fname = "/Users/huangrh/MyGit/geoR/example/data/anom.2000.03.tiff")  #Read in a geoTiff of rainfall anomolies
+g <- rgdal::readGDAL(fname = file.path(getwd(),"/example/data/anom.2000.03.tiff"))  #Read in a geoTiff of rainfall anomolies
 ## data/anom.2000.03.tiff has GDAL driver GTiff
 ## and has 801 rows and 751 columns
-g <- raster(g)  #convert it to a format recongnizable by the raster package
+g <- raster(g)  # convert it to a format recongnizable by the raster package
 # --plot it
 plot(g)
-plot(ds, add = T)  #plot kenay on top to get some sense of the extent
+plot(ds, add = T)  # plot kenay on top to get some sense of the extent
 # ------Crop the Raster Dataset to the Extent of the Kenya Shapefile
-gc <- crop(g, ds)  #clip the raster to the extent of the shapefile
+gc <- crop(g, ds)  # clip the raster to the extent of the shapefile
 # Then test again to make sure they line up
 plot(gc)
-plot
+plot(ds, add = TRUE)
 
 # --------------------------PIXEL IN POLY SPATIAL JOIN------------------------------
 # Unweighted- only assigns grid to district if centroid is in that district
@@ -210,6 +223,42 @@ ds@data$precip <- extract(gc, ds, fun = mean, weights = FALSE)
 # ==========================================================
 # ------Examine the Results and Extract the Data----------- Plot The Results
 # spplot(dsp[,c('wrsi','wrsi_wght')])
+```
+# 8 Make Maps with ggplot2()
+
+8.1 Setting up the Data with fortify()
+The ggplot2() package separates spatial data into 2 elements: 
+
+1) The data.frame and 
+
+2)The spatial coor- dinates. 
+
+If you want to make a map from a shapefile you first have to use the fortify() command which converts the shapefile to a format readable by ggplot2:
+
+```{r}
+# ------------------------PREP SPATIAL DATA FOR GGPLOT WITH FORTIFY()------------
+pds <- fortify(ds, region = "ip89DId")  #convert to form readable by ggplot2
+pds$ip89DId <- as.integer(pds$id)
+head(pds)
+
+d <- read.csv(paste(datdir, "kenpop89to99.csv", sep = ""))
+p1 <- ggplot(d)
+p1 <- p1 + geom_map(aes(fill = d$PopChg, map_id = d$ip89DId), map = pds)  #include the fill aesthetic here,
+p1 <- p1 + expand_limits(x = pds$long, y = pds$lat)  #this is sometimes necessary to keep from throwin a
+p1 <- p1 + coord_equal()  #this keeps the map from having that 'squished' look
+p1 + xlab("Basic Map with Default Elements")
+```
+
+```{r}
+library(maps)
+world_map<-map_data("world")
+gg <- ggplot()
+# need one layer with ALL THE THINGS (well, all the regions)
+gg <- gg + geom_map(dat=world_map, map = world_map, 
+                    aes(map_id=region), fill="white", color="black")
+gg <- gg + expand_limits(x = world_map$long, y = world_map$lat)
+gg <- gg + theme(legend.position="none")
+gg
 ```
 
 
